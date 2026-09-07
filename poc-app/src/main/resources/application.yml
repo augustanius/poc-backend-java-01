@@ -1,26 +1,8 @@
 spring:
   application:
     name: poc
-  config:
-    import: vault://
-  cloud:
-    vault:
-      host: localhost
-      port: 8200
-      scheme: http
-      authentication: TOKEN
-      token: ${VAULT_TOKEN:root-token}
-      kv:
-        enabled: true
-        backend: secret
-        default-context: poc
-        api-version: 2
-  datasource:
-    url: jdbc:postgresql://localhost:6432/poc
-    driver-class-name: org.postgresql.Driver
-    hikari:
-      maximum-pool-size: 10
-      minimum-idle: 2
+  profiles:
+    default: prod
   jpa:
     hibernate:
       ddl-auto: validate
@@ -38,24 +20,11 @@ spring:
     locations: classpath:db/migration
     ignore-migration-patterns: "*:*"
 
-springdoc:
-  api-docs:
-    enabled: false
-  swagger-ui:
-    enabled: false
-
 server:
   port: 8080
-
-keycloak:
-  auth-server-url: http://localhost:8081
-  realm: poc
-  client-id: poc-api
-  client-secret: poc-api-secret
-  admin-username: admin
-  admin-password: admin
 
 logging:
   level:
     com.poc: DEBUG
     org.springframework.boot: INFO
+    org.springframework.cloud.vault: DEBUG

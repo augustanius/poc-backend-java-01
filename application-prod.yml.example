@@ -1,0 +1,13 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/poc
+    username: poc
+    password: poc
+
+keycloak:
+  auth-server-url: http://localhost:8081
+  realm: poc
+  client-id: poc-api
+  client-secret: poc-api-secret
+  admin-username: admin
+  admin-password: admin

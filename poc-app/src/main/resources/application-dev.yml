@@ -1,3 +1,25 @@
+spring:
+  config:
+    import: vault://
+  cloud:
+    vault:
+      host: localhost
+      port: 8200
+      scheme: http
+      authentication: TOKEN
+      token: ${VAULT_TOKEN}
+      kv:
+        enabled: true
+        backend: secret
+        default-context: poc
+        api-version: 2
+  datasource:
+    url: jdbc:postgresql://localhost:6432/poc
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+
 springdoc:
   api-docs:
     enabled: true

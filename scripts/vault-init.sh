@@ -43,7 +43,7 @@ curl -sf \
     -H "X-Vault-Token: ${VAULT_TOKEN}" \
     -H "Content-Type: application/json" \
     -d '{"data":{"spring.datasource.username":"poc","spring.datasource.password":"poc"}}' \
-    "${VAULT_ADDR}/v1/secret/data/poc" > /dev/null
+    "${VAULT_ADDR}/v1/secret/data/poc/dev" > /dev/null
 
 echo "Vault secrets seeded successfully!"
 echo "  - spring.datasource.username = poc"
