@@ -189,12 +189,12 @@ This calls the Keycloak password grant endpoint and returns an access token with
 
 ## Vault (Secrets Management)
 
-Vault stores database credentials. The app reads them at startup via Spring Cloud Vault.
+Vault stores database credentials and Keycloak secrets. The app reads them at startup via Spring Cloud Vault.
 
 ### How it works
 
 1. `docker/vault/scripts/start.sh` initializes Vault and unseals it (runs inside container)
-2. `scripts/vault-init.sh` enables KV v2, seeds secrets to `secret/poc/dev`, writes `.vault-token` (runs on host)
+2. `scripts/vault-init.sh` enables KV v2, seeds all secrets to `secret/poc`, writes `.vault-token` (runs on host)
 3. `Makefile` reads `.vault-token`, exports `VAULT_TOKEN` env var before running the app
 4. `application-dev.yml` uses `${VAULT_TOKEN}` to authenticate with Vault
 
@@ -203,7 +203,7 @@ Vault stores database credentials. The app reads them at startup via Spring Clou
 ```
 make infra-up
   → docker compose up vault (start.sh: init + unseal)
-  → vault-init.sh: enable KV v2, seed secrets, write .vault-token
+  → vault-init.sh: enable KV v2, seed all secrets (datasource + keycloak), write .vault-token
 
 make run-dev
   → Makefile reads .vault-token → exports VAULT_TOKEN
@@ -217,6 +217,19 @@ make run-dev
 |---------|----------------|---------------|
 | `dev` (default for local) | HashiCorp Vault | `application-dev.yml` + Makefile exports token |
 | `prod` (default for production) | AWS/GCP/Azure (when configured) | Env vars or `application-prod.yml` |
+
+### Vault Secrets (stored at `secret/poc`)
+
+| Key | Value | Used By |
+|-----|-------|---------|
+| `spring.datasource.username` | `poc` | HikariCP connection pool |
+| `spring.datasource.password` | `poc` | HikariCP connection pool |
+| `keycloak.auth-server-url` | `http://keycloak:8080` | `KeycloakProperties` |
+| `keycloak.realm` | `poc` | `KeycloakProperties` |
+| `keycloak.client-id` | `poc-api` | `KeycloakProperties` |
+| `keycloak.client-secret` | `poc-api-secret` | `KeycloakProperties` |
+| `keycloak.admin-username` | `admin` | `KeycloakProperties` |
+| `keycloak.admin-password` | `admin` | `KeycloakProperties` |
 
 ### Local Development
 

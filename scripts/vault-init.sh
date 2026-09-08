@@ -29,25 +29,25 @@ if [ -z "$VAULT_TOKEN" ]; then
 fi
 echo "Root token loaded."
 
+VAULT_EXEC="docker compose exec -T -e VAULT_TOKEN=${VAULT_TOKEN} -e VAULT_ADDR=http://127.0.0.1:8200 vault"
+
 # Enable KV v2 secrets engine (idempotent)
 echo "Enabling KV v2 secrets engine..."
-curl -sf \
-    -H "X-Vault-Token: ${VAULT_TOKEN}" \
-    -X POST \
-    -d '{"type":"kv","options":{"version":"2"}}' \
-    "${VAULT_ADDR}/v1/sys/mounts/secret" > /dev/null 2>&1 || true
+${VAULT_EXEC} vault secrets enable -path=secret kv-v2 2>/dev/null || true
 echo "KV v2 engine ready."
 
+# Seed all secrets
 echo "Seeding Vault secrets..."
-curl -sf \
-    -H "X-Vault-Token: ${VAULT_TOKEN}" \
-    -H "Content-Type: application/json" \
-    -d '{"data":{"spring.datasource.username":"poc","spring.datasource.password":"poc"}}' \
-    "${VAULT_ADDR}/v1/secret/data/poc/dev" > /dev/null
-
+${VAULT_EXEC} vault kv put secret/poc \
+    spring.datasource.username=poc \
+    spring.datasource.password=poc \
+    keycloak.auth-server-url=http://keycloak:8080 \
+    keycloak.realm=poc \
+    keycloak.client-id=poc-api \
+    keycloak.client-secret=poc-api-secret \
+    keycloak.admin-username=admin \
+    keycloak.admin-password=admin
 echo "Vault secrets seeded successfully!"
-echo "  - spring.datasource.username = poc"
-echo "  - spring.datasource.password = poc"
 
 # Export token for shell usage (e.g., make run)
 echo ""
