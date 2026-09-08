@@ -129,7 +129,7 @@ Kong runs in **DB-less mode** with a declarative config (`docker/kong/kong.yml`)
 
 | Route | Path | Required Permissions |
 |-------|------|---------------------|
-| users | `/api/users` | `user:read`, `user:write` |
+| users | `/api/users` | `user:read` |
 | notification-templates | `/api/notification-templates` | `notification:read`, `notification:write` |
 | notifications | `/api/notifications` | `notification:read`, `notification:write` |
 

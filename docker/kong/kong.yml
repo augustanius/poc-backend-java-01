@@ -1,0 +1,260 @@
+_format_version: "3.0"
+_transform: true
+
+consumers:
+  - username: keycloak-poc
+    jwt_secrets:
+      - key: "http://localhost:8081/realms/poc"
+        algorithm: RS256
+        rsa_public_key: |
+          -----BEGIN PUBLIC KEY-----
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu1L3qP2qO43xkT3PEoie
+          RwsKgQLWOMjqyRWZR+NLQ6y0RputJsKUycKu7jRo/sF3Zil65R+RE6mbaL2EVe7u
+          QJhsj4vtQmPsJTxpTqA13lhtAeNwT6HerVQugr90OXmTpKpToTHIwPBQ9ATOsGBk
+          MtBJKlqwTxm/2Br3bHTsyNrM/N+wZjmindwaNzfnaQQElgZXaA91XLiHK44ARD1J
+          chibnzDiEKPKnhjHTRac2Nyf89IXHXWQpe2rlyNwtWwDN2XCwAkArh/pcxyV5bLp
+          eFcXgltVnY4ZMGVqw9+h1VlICcYeZYZVV87B2NHypoZDUXt074BIiH+WSFd37JWh
+          LQIDAQAB
+          -----END PUBLIC KEY-----
+      - key: "http://poc-keycloak:8080/realms/poc"
+        algorithm: RS256
+        rsa_public_key: |
+          -----BEGIN PUBLIC KEY-----
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu1L3qP2qO43xkT3PEoie
+          RwsKgQLWOMjqyRWZR+NLQ6y0RputJsKUycKu7jRo/sF3Zil65R+RE6mbaL2EVe7u
+          QJhsj4vtQmPsJTxpTqA13lhtAeNwT6HerVQugr90OXmTpKpToTHIwPBQ9ATOsGBk
+          MtBJKlqwTxm/2Br3bHTsyNrM/N+wZjmindwaNzfnaQQElgZXaA91XLiHK44ARD1J
+          chibnzDiEKPKnhjHTRac2Nyf89IXHXWQpe2rlyNwtWwDN2XCwAkArh/pcxyV5bLp
+          eFcXgltVnY4ZMGVqw9+h1VlICcYeZYZVV87B2NHypoZDUXt074BIiH+WSFd37JWh
+          LQIDAQAB
+          -----END PUBLIC KEY-----
+
+services:
+  - name: poc-api
+    url: http://host.docker.internal:8080
+    routes:
+      - name: users
+        paths: ["/api/users"]
+        strip_path: false
+        plugins:
+          - name: cors
+            config:
+              origins: ["http://localhost:3000", "http://localhost:5173"]
+              methods: [GET, HEAD, PUT, PATCH, POST, DELETE, OPTIONS]
+              headers: [Authorization, Content-Type]
+              exposed_headers: []
+              credentials: true
+              preflight_continue: false
+              max_age: 3600
+          - name: jwt
+            config:
+              claims_to_verify: ["exp"]
+              run_on_preflight: false
+          - name: post-function
+            config:
+              access:
+                - |
+                  local ALLOWED = { ["user:read"] = true, ["user:write"] = true }
+                  local function extract(str, key)
+                    local _, _, val = str:find('"' .. key .. '":"([^"]*)"')
+                    return val
+                  end
+                  local function extract_array(str, key)
+                    local _, _, arr = str:find('"' .. key .. '":%[([^%]]*)%]')
+                    if arr then return arr:gsub('"', ''):gsub('%s+', '') end
+                    return ""
+                  end
+                  local auth_header = kong.request.get_header("Authorization")
+                  if auth_header then
+                    local jwt_str = auth_header:match("^Bearer%s+(.+)$")
+                    if jwt_str then
+                      local _, payload_b64, _ = jwt_str:match("^([^.]+)%.([^.]+)%.([^.]+)$")
+                      if payload_b64 then
+                        payload_b64 = payload_b64:gsub("-", "+"):gsub("_", "/")
+                        local pad = 4 - (#payload_b64 % 4)
+                        if pad < 4 then payload_b64 = payload_b64 .. string.rep("=", pad) end
+                        local payload = ngx.decode_base64(payload_b64)
+                        if payload then
+                          local permissions = {}
+                          local permitted = false
+                          local ra_match = payload:match('"resource_access":%{.-"roles":%[([^%]]*)%]')
+                          if ra_match then
+                            for perm in (ra_match:gsub('"', ''):gsub('%s+', '') .. ","):gmatch("([^,]*),") do
+                              if perm ~= "" and not permissions[perm] then
+                                permissions[perm] = true
+                                if ALLOWED[perm] then permitted = true end
+                              end
+                            end
+                          end
+                          if not permitted then
+                            return kong.response.exit(403, { message = "Forbidden: missing required permission" })
+                          end
+                          local permission_list = ""
+                          for perm in pairs(permissions) do
+                            if permission_list ~= "" then permission_list = permission_list .. "," end
+                            permission_list = permission_list .. perm
+                          end
+                          local roles = extract_array(payload, "roles")
+                          kong.service.request.clear_header("Authorization")
+                          kong.service.request.clear_header("X-User-Id")
+                          kong.service.request.clear_header("X-User-Roles")
+                          kong.service.request.clear_header("X-User-Permissions")
+                          kong.service.request.clear_header("X-User-Name")
+                          kong.service.request.set_header("X-User-Id", extract(payload, "sub"))
+                          kong.service.request.set_header("X-User-Roles", roles)
+                          kong.service.request.set_header("X-User-Permissions", permission_list)
+                          kong.service.request.set_header("X-User-Name", extract(payload, "preferred_username"))
+                        end
+                      end
+                    end
+                  end
+      - name: notification-templates
+        paths: ["/api/notification-templates"]
+        strip_path: false
+        plugins:
+          - name: cors
+            config:
+              origins: ["http://localhost:3000", "http://localhost:5173"]
+              methods: [GET, HEAD, PUT, PATCH, POST, DELETE, OPTIONS]
+              headers: [Authorization, Content-Type]
+              exposed_headers: []
+              credentials: true
+              preflight_continue: false
+              max_age: 3600
+          - name: jwt
+            config:
+              claims_to_verify: ["exp"]
+              run_on_preflight: false
+          - name: post-function
+            config:
+              access:
+                - |
+                  local ALLOWED = { ["notification:read"] = true, ["notification:write"] = true }
+                  local function extract(str, key)
+                    local _, _, val = str:find('"' .. key .. '":"([^"]*)"')
+                    return val
+                  end
+                  local function extract_array(str, key)
+                    local _, _, arr = str:find('"' .. key .. '":%[([^%]]*)%]')
+                    if arr then return arr:gsub('"', ''):gsub('%s+', '') end
+                    return ""
+                  end
+                  local auth_header = kong.request.get_header("Authorization")
+                  if auth_header then
+                    local jwt_str = auth_header:match("^Bearer%s+(.+)$")
+                    if jwt_str then
+                      local _, payload_b64, _ = jwt_str:match("^([^.]+)%.([^.]+)%.([^.]+)$")
+                      if payload_b64 then
+                        payload_b64 = payload_b64:gsub("-", "+"):gsub("_", "/")
+                        local pad = 4 - (#payload_b64 % 4)
+                        if pad < 4 then payload_b64 = payload_b64 .. string.rep("=", pad) end
+                        local payload = ngx.decode_base64(payload_b64)
+                        if payload then
+                          local permissions = {}
+                          local permitted = false
+                          local ra_match = payload:match('"resource_access":%{.-"roles":%[([^%]]*)%]')
+                          if ra_match then
+                            for perm in (ra_match:gsub('"', ''):gsub('%s+', '') .. ","):gmatch("([^,]*),") do
+                              if perm ~= "" and not permissions[perm] then
+                                permissions[perm] = true
+                                if ALLOWED[perm] then permitted = true end
+                              end
+                            end
+                          end
+                          if not permitted then
+                            return kong.response.exit(403, { message = "Forbidden: missing required permission" })
+                          end
+                          local permission_list = ""
+                          for perm in pairs(permissions) do
+                            if permission_list ~= "" then permission_list = permission_list .. "," end
+                            permission_list = permission_list .. perm
+                          end
+                          local roles = extract_array(payload, "roles")
+                          kong.service.request.clear_header("Authorization")
+                          kong.service.request.clear_header("X-User-Id")
+                          kong.service.request.clear_header("X-User-Roles")
+                          kong.service.request.clear_header("X-User-Permissions")
+                          kong.service.request.clear_header("X-User-Name")
+                          kong.service.request.set_header("X-User-Id", extract(payload, "sub"))
+                          kong.service.request.set_header("X-User-Roles", roles)
+                          kong.service.request.set_header("X-User-Permissions", permission_list)
+                          kong.service.request.set_header("X-User-Name", extract(payload, "preferred_username"))
+                        end
+                      end
+                    end
+                  end
+      - name: notifications
+        paths: ["/api/notifications"]
+        strip_path: false
+        plugins:
+          - name: cors
+            config:
+              origins: ["http://localhost:3000", "http://localhost:5173"]
+              methods: [GET, HEAD, PUT, PATCH, POST, DELETE, OPTIONS]
+              headers: [Authorization, Content-Type]
+              exposed_headers: []
+              credentials: true
+              preflight_continue: false
+              max_age: 3600
+          - name: jwt
+            config:
+              claims_to_verify: ["exp"]
+              run_on_preflight: false
+          - name: post-function
+            config:
+              access:
+                - |
+                  local ALLOWED = { ["notification:read"] = true, ["notification:write"] = true }
+                  local function extract(str, key)
+                    local _, _, val = str:find('"' .. key .. '":"([^"]*)"')
+                    return val
+                  end
+                  local function extract_array(str, key)
+                    local _, _, arr = str:find('"' .. key .. '":%[([^%]]*)%]')
+                    if arr then return arr:gsub('"', ''):gsub('%s+', '') end
+                    return ""
+                  end
+                  local auth_header = kong.request.get_header("Authorization")
+                  if auth_header then
+                    local jwt_str = auth_header:match("^Bearer%s+(.+)$")
+                    if jwt_str then
+                      local _, payload_b64, _ = jwt_str:match("^([^.]+)%.([^.]+)%.([^.]+)$")
+                      if payload_b64 then
+                        payload_b64 = payload_b64:gsub("-", "+"):gsub("_", "/")
+                        local pad = 4 - (#payload_b64 % 4)
+                        if pad < 4 then payload_b64 = payload_b64 .. string.rep("=", pad) end
+                        local payload = ngx.decode_base64(payload_b64)
+                        if payload then
+                          local permissions = {}
+                          local permitted = false
+                          local ra_match = payload:match('"resource_access":%{.-"roles":%[([^%]]*)%]')
+                          if ra_match then
+                            for perm in (ra_match:gsub('"', ''):gsub('%s+', '') .. ","):gmatch("([^,]*),") do
+                              if perm ~= "" and not permissions[perm] then
+                                permissions[perm] = true
+                                if ALLOWED[perm] then permitted = true end
+                              end
+                            end
+                          end
+                          if not permitted then
+                            return kong.response.exit(403, { message = "Forbidden: missing required permission" })
+                          end
+                          local permission_list = ""
+                          for perm in pairs(permissions) do
+                            if permission_list ~= "" then permission_list = permission_list .. "," end
+                            permission_list = permission_list .. perm
+                          end
+                          local roles = extract_array(payload, "roles")
+                          kong.service.request.clear_header("Authorization")
+                          kong.service.request.clear_header("X-User-Id")
+                          kong.service.request.clear_header("X-User-Roles")
+                          kong.service.request.clear_header("X-User-Permissions")
+                          kong.service.request.clear_header("X-User-Name")
+                          kong.service.request.set_header("X-User-Id", extract(payload, "sub"))
+                          kong.service.request.set_header("X-User-Roles", roles)
+                          kong.service.request.set_header("X-User-Permissions", permission_list)
+                          kong.service.request.set_header("X-User-Name", extract(payload, "preferred_username"))
+                        end
+                      end
+                    end
+                  end

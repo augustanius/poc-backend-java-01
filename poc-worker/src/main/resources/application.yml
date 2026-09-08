@@ -1,0 +1,56 @@
+spring:
+  application:
+    name: poc-worker
+  profiles:
+    default: prod
+  main:
+    web-application-type: none
+  datasource:
+    url: jdbc:postgresql://localhost:6432/poc
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    open-in-view: false
+  flyway:
+    enabled: false
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+  mail:
+    host: localhost
+    port: 1025
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
+
+topics:
+  email: poc.dev.email.events.v1
+  dlq:
+    email: poc.dev.email.dlq.v1
+
+outbox:
+  poll-interval-ms: 500
+  batch-size: 50
+  max-retries: 5
+
+worker:
+  handlers: "*"
+
+logging:
+  level:
+    com.poc: DEBUG
+    org.springframework.kafka: INFO

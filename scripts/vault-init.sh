@@ -41,7 +41,7 @@ echo "Seeding Vault secrets..."
 ${VAULT_EXEC} vault kv put secret/poc \
     spring.datasource.username=poc \
     spring.datasource.password=poc \
-    keycloak.auth-server-url=http://keycloak:8080 \
+    keycloak.auth-server-url=http://localhost:8081 \
     keycloak.realm=poc \
     keycloak.client-id=poc-api \
     keycloak.client-secret=poc-api-secret \

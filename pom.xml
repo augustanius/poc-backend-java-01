@@ -22,6 +22,7 @@
         <module>poc-user</module>
         <module>poc-notification</module>
         <module>poc-app</module>
+        <module>poc-worker</module>
     </modules>
 
     <properties>
@@ -58,6 +59,11 @@
             <dependency>
                 <groupId>com.poc</groupId>
                 <artifactId>poc-notification</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.poc</groupId>
+                <artifactId>poc-worker</artifactId>
                 <version>${project.version}</version>
             </dependency>
         </dependencies>

@@ -1,5 +1,7 @@
 package com.poc.notification.application.service;
 
+import com.poc.common.event.EmailEvent;
+import com.poc.common.outbox.OutboxPublisher;
 import com.poc.notification.application.api.SendNotificationUseCase;
 import com.poc.notification.domain.model.Notification;
 import com.poc.notification.domain.spi.NotificationRepository;
@@ -9,7 +11,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
 import java.util.UUID;
 
 @Service
@@ -19,11 +20,14 @@ public class SendNotificationService implements SendNotificationUseCase {
 
     private final NotificationRepository notificationRepository;
     private final UserPublicApi userPublicApi;
+    private final OutboxPublisher outboxPublisher;
 
     public SendNotificationService(NotificationRepository notificationRepository,
-                                   UserPublicApi userPublicApi) {
+                                   UserPublicApi userPublicApi,
+                                   OutboxPublisher outboxPublisher) {
         this.notificationRepository = notificationRepository;
         this.userPublicApi = userPublicApi;
+        this.outboxPublisher = outboxPublisher;
     }
 
     @Override
@@ -32,15 +36,29 @@ public class SendNotificationService implements SendNotificationUseCase {
         var userInfo = userPublicApi.findUserById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
 
-        log.info("Sending notification to user {} ({}) via {}", userInfo.username(), userInfo.email(), channel);
+        log.info("Queuing notification for user {} ({}) via {}", userInfo.username(), userInfo.email(), channel);
 
         Notification notification = new Notification(
                 UUID.randomUUID().toString(), userId, templateId, subject, body, channel);
 
-        // In a real app, you would call an email/SMS/push provider here
-        notification.setStatus(Notification.Status.SENT);
-        notification.setSentAt(Instant.now());
+        notification = notificationRepository.save(notification);
 
-        return notificationRepository.save(notification);
+        EmailEvent emailEvent = new EmailEvent(
+                notification.getId(),
+                userId,
+                userInfo.email(),
+                subject,
+                body,
+                channel
+        );
+
+        outboxPublisher.publish(
+                "Notification",
+                notification.getId(),
+                "EmailNotificationRequested",
+                emailEvent
+        );
+
+        return notification;
     }
 }

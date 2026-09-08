@@ -2,17 +2,18 @@
 
 ## Overview
 
-This is a modular monolith built with Spring Boot 4, demonstrating hexagonal (ports & adapters) architecture across two business modules: **User** and **Notification**. Infrastructure includes Kong API Gateway, PostgreSQL, PgBouncer, OpenTelemetry (Jaeger + Loki + Grafana), HashiCorp Vault, and Keycloak.
+This is a modular monolith built with Spring Boot 4, demonstrating hexagonal (ports & adapters) architecture across two business modules: **User** and **Notification**, with a separate **Worker** for async event processing via Kafka. Infrastructure includes Kong API Gateway, PostgreSQL, PgBouncer, Kafka (KRaft), MailHog, OpenTelemetry (Jaeger + Loki + Grafana), HashiCorp Vault, and Keycloak.
 
 ## Module Dependency Graph
 
 ```
-poc-common       (shared kernel, base classes, domain events)
+poc-common       (shared kernel, base classes, domain events, outbox)
     ↑ compile
     ├── poc-user      (User module + Keycloak integration)
     └── poc-notification (Notification module, compile-depends on poc-user)
               ↑ runtime-only
            poc-app     (assembles everything, @SpringBootApplication)
+           poc-worker  (async event processor, @SpringBootApplication)
 ```
 
 ### Rules
@@ -78,13 +79,13 @@ poc-{module}/src/main/java/com/poc/{module}/
 | `User.java`                  | Domain model — extends `AggregateRoot<String>`                    |
 | `UserRepository.java`        | SPI — outbound port for persistence                               |
 | `IdentityProviderPort.java`  | SPI — port for Keycloak integration                               |
-| `CreateUserUseCase.java`     | Use case — create a user                                          |
 | `GetUserUseCase.java`        | Use case — get/search users                                       |
 | `RegisterUserUseCase.java`   | Use case — register (Keycloak + DB + event)                       |
-| `CreateUserService.java`     | Implementation — delegates to repository                          |
 | `GetUserService.java`        | Implementation — delegates to repository                          |
 | `RegisterUserService.java`   | Implementation — orchestrates identity + DB + event with rollback |
-| `UserController.java`        | REST controller — `@RequirePermission`, ownership checks          |
+| `AuthController.java`        | REST controller — `POST /api/auth/register` (public)              |
+| `AuthDto.java`               | Request/response records for auth                                  |
+| `UserController.java`        | REST controller — `@RequirePermission`, read-only                 |
 | `UserDto.java`               | Request/response records                                          |
 | `UserJpaEntity.java`         | JPA entity — `@Table(schema = "poc_user")`                        |
 | `UserJpaRepository.java`     | Spring Data repository                                            |
@@ -135,6 +136,121 @@ poc-{module}/src/main/java/com/poc/{module}/
 | `application.yml`                          | Vault, Keycloak, multi-schema Flyway, datasource config |
 | `V1__create_users_table.sql`               | Flyway migration — `poc_user` schema                    |
 | `V2__create_notifications_table.sql`       | Flyway migration — `poc_notification` schema            |
+| `V3__create_outbox_events_table.sql`       | Flyway migration — `poc_outbox` schema                  |
+| `UserRegisteredEmailListener.java`         | Listens for UserRegisteredEvent → queues welcome email  |
+
+### poc-worker
+
+| File                         | Purpose                                                           |
+| ---------------------------- | ----------------------------------------------------------------- |
+| `WorkerApplication.java`     | `@SpringBootApplication` entry point (no web)                     |
+| `KafkaConfig.java`           | Producer/consumer beans, `@EnableKafka`                           |
+| `EventHandler.java`          | Interface for event handlers                                      |
+| `EventDispatcher.java`       | Routes events by type, filters by `--worker.handlers` CLI arg     |
+| `EmailEventHandler.java`     | Sends email via Spring JavaMailSender                              |
+| `OutboxPoller.java`          | `@Scheduled` poller — claims outbox events → Kafka                 |
+| `EmailConsumer.java`         | `@KafkaListener` — receives from Kafka → dispatches to handler    |
+| `application.yml`            | Kafka, mail (MailHog), outbox, worker config                      |
+
+## Kafka & Event-Driven Architecture
+
+### Overview
+
+The app uses the **Transactional Outbox Pattern** for reliable event delivery to Kafka. Events are written to the `outbox_events` table in the **same transaction** as business data, then published to Kafka by a background poller.
+
+### Flow
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  poc-app (API Server)                                           │
+│                                                                 │
+│  RegisterUserService                                            │
+│    ├── DB: save user                                            │
+│    └── ApplicationEventPublisher → UserRegisteredEvent          │
+│                                                                 │
+│  UserRegisteredEmailListener (@EventListener)                   │
+│    ├── Creates Notification (PENDING) in DB                     │
+│    └── OutboxPublisher → outbox_event (same @Transactional)     │
+└─────────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌───────────────────────────────────────────────────┐
+│  PostgreSQL: poc_outbox.outbox_events             │
+│  (SELECT FOR UPDATE SKIP LOCKED)                  │
+└───────────────────┬───────────────────────────────┘
+                    │
+┌───────────────────┴───────────────────────────────┐
+│  poc-worker (Email Worker)                        │
+│                                                   │
+│  OutboxPoller (@Scheduled 500ms)                  │
+│    ├── Claims batch of unpublished events         │
+│    └── KafkaTemplate.send() → Kafka               │
+│                                                   │
+│  EmailConsumer (@KafkaListener)                   │
+│    ├── Routes by eventType via EventDispatcher    │
+│    ├── EmailEventHandler → Spring JavaMailSender  │
+│    └── Updates Notification → SENT or FAILED      │
+└───────────────────┬───────────────────────────────┘
+                    │
+┌───────────────────┴───────────────────────────────┐
+│  Kafka (KRaft 3.9.1)                              │
+│  Topic: poc.dev.email.events.v1                   │
+└───────────────────┬───────────────────────────────┘
+                    │
+┌───────────────────┴───────────────────────────────┐
+│  MailHog (Docker)                                 │
+│  SMTP: :1025  |  Web UI: :8025                    │
+└───────────────────────────────────────────────────┘
+```
+
+### Kafka Topics
+
+| Topic | Purpose |
+|-------|---------|
+| `poc.dev.email.events.v1` | Email notification events |
+| `poc.dev.email.dlq.v1` | Dead letter queue for failed emails |
+
+### Running the Worker
+
+```bash
+# Start infrastructure
+docker compose up -d
+
+# API server (default)
+java -jar poc-app/target/poc-app-0.0.1-SNAPSHOT.jar
+
+# Email worker (all handlers)
+java -jar poc-worker/target/poc-worker-0.0.1-SNAPSHOT.jar
+
+# Email worker (only email handler)
+java -jar poc-worker/target/poc-worker-0.0.1-SNAPSHOT.jar --worker.handlers=email
+
+# Scale email workers
+java -jar poc-worker/target/poc-worker-0.0.1-SNAPSHOT.jar --worker.handlers=email &
+java -jar poc-worker/target/poc-worker-0.0.1-SNAPSHOT.jar --worker.handlers=email &
+```
+
+### Adding a New Event Handler
+
+1. Create a class implementing `EventHandler` in `poc-worker/handler/`:
+
+```java
+@Component
+public class SmsEventHandler implements EventHandler {
+    @Override
+    public String name() { return "sms"; }
+
+    @Override
+    public String eventType() { return "SmsNotificationRequested"; }
+
+    @Override
+    public void handle(OutboxEvent event) {
+        // call Twilio, Vonage, etc.
+    }
+}
+```
+
+2. Enable it: `--worker.handlers=email,sms`
 
 ## How to Add a New Module
 

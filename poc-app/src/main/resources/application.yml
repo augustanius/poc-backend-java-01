@@ -13,15 +13,32 @@ spring:
         format_sql: true
   flyway:
     enabled: true
+    validate-on-migrate: true
+    out-of-order: false
     schemas:
       - poc_user
       - poc_notification
+      - poc_outbox
+      - poc_dlq
     create-schemas: true
     locations: classpath:db/migration
     ignore-migration-patterns: "*:*"
+  kafka:
+    bootstrap-servers: localhost:9092
 
 server:
   port: 8080
+
+topics:
+  email: poc.dev.email.events.v1
+  dlq:
+    email: poc.dev.email.dlq.v1
+    pattern: "poc\\.dev\\..*\\.dlq\\..*"
+
+outbox:
+  poll-interval-ms: 500
+  batch-size: 50
+  max-retries: 5
 
 logging:
   level:

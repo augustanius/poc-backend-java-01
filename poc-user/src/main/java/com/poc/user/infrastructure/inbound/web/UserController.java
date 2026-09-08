@@ -1,33 +1,21 @@
 package com.poc.user.infrastructure.inbound.web;
 
+import com.poc.common.context.RequirePermission;
 import com.poc.common.domain.PageResult;
-import com.poc.user.application.api.CreateUserUseCase;
 import com.poc.user.application.api.GetUserUseCase;
 import com.poc.user.domain.model.User;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.UUID;
-
 @RestController
 @RequestMapping("/api/users")
+@RequirePermission("user:read")
 public class UserController {
 
-    private final CreateUserUseCase createUserUseCase;
     private final GetUserUseCase getUserUseCase;
 
-    public UserController(CreateUserUseCase createUserUseCase, GetUserUseCase getUserUseCase) {
-        this.createUserUseCase = createUserUseCase;
+    public UserController(GetUserUseCase getUserUseCase) {
         this.getUserUseCase = getUserUseCase;
-    }
-
-    @PostMapping
-    public ResponseEntity<UserDto.UserResponse> create(@RequestBody UserDto.CreateUserRequest request) {
-        User user = new User(UUID.randomUUID().toString(), request.username(), request.email());
-        User saved = createUserUseCase.create(user);
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(new UserDto.UserResponse(saved.getId(), saved.getUsername(), saved.getEmail()));
     }
 
     @GetMapping("/{id}")
