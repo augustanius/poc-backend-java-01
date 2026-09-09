@@ -66,3 +66,6 @@ logging:
     com.poc: DEBUG
     org.springframework.boot: INFO
     org.springframework.cloud.vault: DEBUG
+    # Uncomment to verify read/write routing (shows which pool handles each request)
+    # com.zaxxer.hikari: DEBUG
+    # com.poc.app.config.datasource: DEBUG
