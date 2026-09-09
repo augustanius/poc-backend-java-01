@@ -30,7 +30,7 @@ CLIENT_ID=$(echo "$CLIENT_JSON" | extract_id)
 if [ -z "$CLIENT_ID" ]; then
     echo "Creating client..."
     curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-      -d '{"clientId":"poc-api","secret":"poc-api-secret","directAccessGrantsEnabled":true,"standardFlowEnabled":true,"publicClient":false,"protocol":"openid-connect","redirectUris":["http://localhost:3000/*","http://localhost:3001/*","http://localhost:5173/*"],"webOrigins":["http://localhost:3000","http://localhost:3001","http://localhost:5173"],"postLogoutRedirectUris":["http://localhost:3000/*","http://localhost:3001/*","http://localhost:5173/*"]}' \
+      -d '{"clientId":"poc-api","secret":"poc-api-secret","directAccessGrantsEnabled":true,"standardFlowEnabled":true,"publicClient":false,"protocol":"openid-connect","redirectUris":["http://localhost:3000/*","http://localhost:3001/*","http://localhost:5173/*"],"webOrigins":["http://localhost:3000","http://localhost:3001","http://localhost:5173"]}' \
       http://keycloak:8080/admin/realms/poc/clients > /dev/null
     CLIENT_ID=$(curl -s -H "Authorization: Bearer $TOKEN" "http://keycloak:8080/admin/realms/poc/clients?clientId=poc-api" | extract_id)
 fi
@@ -38,7 +38,7 @@ fi
 echo "Updating client settings..."
 curl -s -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   "http://keycloak:8080/admin/realms/poc/clients/$CLIENT_ID" \
-  -d '{"clientId":"poc-api","secret":"poc-api-secret","protocol":"openid-connect","publicClient":false,"standardFlowEnabled":true,"implicitFlowEnabled":false,"directAccessGrantsEnabled":true,"serviceAccountsEnabled":false,"redirectUris":["http://localhost:3000/*","http://localhost:3001/*","http://localhost:5173/*"],"webOrigins":["http://localhost:3000","http://localhost:3001","http://localhost:5173"],"postLogoutRedirectUris":["http://localhost:3000/*","http://localhost:3001/*","http://localhost:5173/*"]}' \
+  -d '{"clientId":"poc-api","secret":"poc-api-secret","protocol":"openid-connect","publicClient":false,"standardFlowEnabled":true,"implicitFlowEnabled":false,"directAccessGrantsEnabled":true,"serviceAccountsEnabled":false,"redirectUris":["http://localhost:3000/*","http://localhost:3001/*","http://localhost:5173/*"],"webOrigins":["http://localhost:3000","http://localhost:3001","http://localhost:5173"]}' \
   > /dev/null
 
 # --- Admin User ---
@@ -157,7 +157,7 @@ for id in $(curl -s -H "Authorization: Bearer $TOKEN" "$AUTHZ_BASE/scope?first=0
     curl -s -X DELETE -H "Authorization: Bearer $TOKEN" "$AUTHZ_BASE/scope/$id" > /dev/null || true
 done
 curl -s -X PUT -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-  -d '{"clientId":"poc-api","secret":"poc-api-secret","protocol":"openid-connect","publicClient":false,"standardFlowEnabled":true,"implicitFlowEnabled":false,"directAccessGrantsEnabled":true,"serviceAccountsEnabled":false,"authorizationServicesEnabled":false,"redirectUris":["http://localhost:3000/*","http://localhost:3001/*","http://localhost:5173/*"],"webOrigins":["http://localhost:3000","http://localhost:3001","http://localhost:5173"],"postLogoutRedirectUris":["http://localhost:3000/*","http://localhost:3001/*","http://localhost:5173/*"]}' \
+  -d '{"clientId":"poc-api","secret":"poc-api-secret","protocol":"openid-connect","publicClient":false,"standardFlowEnabled":true,"implicitFlowEnabled":false,"directAccessGrantsEnabled":true,"serviceAccountsEnabled":false,"authorizationServicesEnabled":false,"redirectUris":["http://localhost:3000/*","http://localhost:3001/*","http://localhost:5173/*"],"webOrigins":["http://localhost:3000","http://localhost:3001","http://localhost:5173"]}' \
   "http://keycloak:8080/admin/realms/poc/clients/$CLIENT_ID" > /dev/null
 
 echo "Keycloak init complete"
