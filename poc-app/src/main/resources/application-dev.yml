@@ -13,12 +13,27 @@ spring:
         backend: secret
         default-context: poc
         api-version: 2
+
+app:
   datasource:
-    url: jdbc:postgresql://localhost:6432/poc
-    driver-class-name: org.postgresql.Driver
-    hikari:
-      maximum-pool-size: 10
-      minimum-idle: 2
+    primary:
+      hikari:
+        jdbc-url: jdbc:postgresql://localhost:6432/poc
+        driver-class-name: org.postgresql.Driver
+        username: poc
+        password: poc
+        maximum-pool-size: 10
+        minimum-idle: 2
+        pool-name: primary-pool
+    replica:
+      hikari:
+        jdbc-url: jdbc:postgresql://localhost:6433/poc
+        driver-class-name: org.postgresql.Driver
+        username: poc
+        password: poc
+        maximum-pool-size: 10
+        minimum-idle: 2
+        pool-name: replica-pool
 
 springdoc:
   api-docs:

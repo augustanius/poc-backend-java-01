@@ -1,9 +1,9 @@
-.PHONY: help infra-up infra-down infra-reset kafka-up build install run run-worker run-worker-email run-dev run-worker-dev start-dev test clean flyway-migrate flyway-info flyway-validate flyway-clean flyway-baseline flyway-repair
+.PHONY: help infra-up infra-down infra-reset kafka-up build install run run-worker run-worker-email run-dev run-worker-dev start-dev test clean flyway-migrate flyway-info flyway-validate flyway-clean flyway-baseline flyway-repair verify-replication psql-master psql-replica logs-replica
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-infra-up: ## Start infrastructure (PostgreSQL, PgBouncer, Keycloak, Kong, Vault, Jaeger, Loki, Grafana)
+infra-up: ## Start infrastructure (PostgreSQL + replica, PgBouncer x2, Keycloak, Kong, Vault, Jaeger, Loki, Grafana)
 	docker compose up -d
 	@echo "Waiting for services to start..."
 	@sleep 15
@@ -68,6 +68,18 @@ logs-kong: ## Tail Kong logs
 
 logs-postgres: ## Tail PostgreSQL logs
 	docker compose logs -f postgres
+
+logs-replica: ## Tail PostgreSQL replica logs
+	docker compose logs -f postgres-replica
+
+verify-replication: ## Verify PostgreSQL streaming replication is working
+	@./docker/scripts/verify-replication.sh
+
+psql-master: ## Connect to PostgreSQL master via psql
+	docker compose exec postgres psql -U poc -d poc
+
+psql-replica: ## Connect to PostgreSQL replica via psql
+	docker compose exec postgres-replica psql -U poc -d poc
 
 logs-kafka: ## Tail Kafka logs
 	docker compose logs -f kafka

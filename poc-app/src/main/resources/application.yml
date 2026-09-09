@@ -29,6 +29,27 @@ spring:
 server:
   port: 8080
 
+app:
+  datasource:
+    primary:
+      hikari:
+        jdbc-url: jdbc:postgresql://localhost:6432/poc
+        driver-class-name: org.postgresql.Driver
+        username: poc
+        password: poc
+        maximum-pool-size: 10
+        minimum-idle: 2
+        pool-name: primary-pool
+    replica:
+      hikari:
+        jdbc-url: jdbc:postgresql://localhost:6433/poc
+        driver-class-name: org.postgresql.Driver
+        username: poc
+        password: poc
+        maximum-pool-size: 10
+        minimum-idle: 2
+        pool-name: replica-pool
+
 topics:
   email: poc.dev.email.events.v1
   dlq:

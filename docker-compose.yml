@@ -17,6 +17,30 @@ services:
       timeout: 5s
       retries: 5
 
+  postgres-replica:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: poc
+      REPLICA_PRIMARY_HOST: postgres
+      REPLICA_PRIMARY_PORT: 5432
+      REPLICA_USER: replicator
+      REPLICA_PASSWORD: replicator
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-replica-data:/var/lib/postgresql/data
+      - ./docker/postgres-replica/entrypoint.sh:/entrypoint-replica.sh:ro
+    entrypoint: ["/bin/bash", "/entrypoint-replica.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U poc -d poc"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+
   pgbouncer:
     image: edoburu/pgbouncer:latest
     environment:
@@ -34,6 +58,25 @@ services:
       - "6432:6432"
     depends_on:
       postgres:
+        condition: service_healthy
+
+  pgbouncer-replica:
+    image: edoburu/pgbouncer:latest
+    environment:
+      DB_USER: poc
+      DB_PASSWORD: poc
+      DB_HOST: postgres-replica
+      DB_PORT: 5432
+      DB_NAME: poc
+      LISTEN_ADDR: 0.0.0.0
+      LISTEN_PORT: 6432
+      AUTH_TYPE: trust
+      MAX_CLIENT_CONN: 100
+      DEFAULT_POOL_SIZE: 20
+    ports:
+      - "6433:6432"
+    depends_on:
+      postgres-replica:
         condition: service_healthy
 
   keycloak:
@@ -163,6 +206,7 @@ services:
 
 volumes:
   postgres-data:
+  postgres-replica-data:
   keycloak-data:
   vault-data:
   kafka-data:

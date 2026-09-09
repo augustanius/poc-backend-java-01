@@ -9,8 +9,8 @@ A Spring Boot 4 modular monolith boilerplate demonstrating hexagonal (ports & ad
 | Java | 25 | Runtime |
 | Spring Boot | 4.0.0 | Framework |
 | Kong | latest | API Gateway (DB-less mode) |
-| PostgreSQL | 16 | Primary database |
-| PgBouncer | latest | Connection pooling |
+| PostgreSQL | 16 | Primary database (master + streaming replica) |
+| PgBouncer | latest | Connection pooling (separate instances for master/replica) |
 | Keycloak | latest | Identity provider (OIDC) |
 | Vault | latest | Secrets management |
 | Jaeger | latest | Distributed tracing |
@@ -28,7 +28,7 @@ A Spring Boot 4 modular monolith boilerplate demonstrating hexagonal (ports & ad
 ```bash
 make infra-up
 ```
-This starts PostgreSQL, PgBouncer, Keycloak (auto-initializes realm/roles), Kong (auto-loads JWT config), Vault, Jaeger, Loki, and Grafana.
+This starts PostgreSQL (master + replica), PgBouncer x2, Keycloak (auto-initializes realm/roles), Kong (auto-loads JWT config), Vault, Jaeger, Loki, and Grafana.
 
 ### 2. Install modules (first time only)
 ```bash
@@ -69,7 +69,9 @@ Client → Kong (:8000)
            ↓
          Controller → Application Service → Domain → SPI → JPA Adapter
            ↓
-         PgBouncer (:6432) → PostgreSQL (:5432)
+         RoutingDataSource
+           ├── @Transactional            → primary-pool → PgBouncer (:6432) → PostgreSQL master (:5432)
+           └── @Transactional(readOnly)  → replica-pool → PgBouncer-replica (:6433) → PostgreSQL replica
 ```
 
 ### Module Dependency Graph
@@ -326,6 +328,125 @@ spring:
 2. Add `poc_{name}` to `spring.flyway.schemas` in `application.yml`
 3. Use `@Table(schema = "poc_{name}")` on JPA entity
 
+## Database Replication
+
+### Architecture
+
+```
+poc-app
+  ├── @Transactional (write)           ──→ RoutingDataSource ──→ primary-pool ──→ pgbouncer (:6432) ──→ postgres (master)
+  └── @Transactional(readOnly = true)  ──→ RoutingDataSource ──→ replica-pool ──→ pgbouncer-replica (:6433) ──→ postgres-replica
+
+poc-worker (unchanged, master only)    ──→ spring.datasource ──→ pgbouncer (:6432) ──→ postgres (master)
+```
+
+### How routing works
+
+The routing is **automatic** via Spring's `@Transactional(readOnly = true)` — no custom annotations or AOP needed.
+
+1. `@Transactional` (default) → `TransactionSynchronizationManager.isCurrentTransactionReadOnly()` returns `false` → routes to **primary** (master)
+2. `@Transactional(readOnly = true)` → `isCurrentTransactionReadOnly()` returns `true` → routes to **replica**
+
+`AbstractRoutingDataSource` calls `determineCurrentLookupKey()` before any query executes, so the routing happens at the transaction level — not per-query.
+
+### Which services route where
+
+| Service | Annotation | Routes To |
+|---------|-----------|-----------|
+| `GetUserService` | `@Transactional(readOnly = true)` | **Replica** |
+| `GetNotificationService` | `@Transactional(readOnly = true)` | **Replica** |
+| `GetNotificationTemplateService` | `@Transactional(readOnly = true)` | **Replica** |
+| `DlqService` (read methods) | `@Transactional(readOnly = true)` | **Replica** |
+| `RegisterUserService` | `@Transactional` | **Primary** |
+| `SendNotificationService` | `@Transactional` | **Primary** |
+| `CreateNotificationTemplateService` | `@Transactional` | **Primary** |
+| `DlqService` (write methods) | `@Transactional` | **Primary** |
+| `UserRegisteredEmailListener` | `@Transactional` | **Primary** |
+
+**Important:** When a `@Transactional` (write) service calls a `@Transactional(readOnly = true)` service, the inner annotation is ignored — the outer transaction's read-write flag takes precedence. This is correct: within a write transaction, reads must go to master to see uncommitted writes.
+
+### Verify routing is working
+
+Enable debug logging to see which connection pool is used per request:
+
+```yaml
+logging:
+  level:
+    com.zaxxer.hikari: DEBUG
+    com.poc.app.config.datasource: DEBUG
+```
+
+Then look for log lines like:
+```
+primary-pool - Connection borrowed from pool
+replica-pool - Connection borrowed from pool
+```
+
+You can also check which PostgreSQL node has active connections:
+
+```bash
+# Master — should show write transactions
+docker compose exec postgres psql -U poc -d poc -c \
+  "SELECT pid, state, query FROM pg_stat_activity WHERE datname = 'poc';"
+
+# Replica — should show read-only transactions
+docker compose exec postgres-replica psql -U poc -d poc -c \
+  "SELECT pid, state, query FROM pg_stat_activity WHERE datname = 'poc';"
+```
+
+### Risks
+
+| Risk | Severity | Description | Mitigation |
+|------|----------|-------------|------------|
+| **Replica lag** | Medium | Reads from replica may return slightly stale data (typically < 1s). If a user registers and immediately queries their profile, the replica might not have the data yet. | By design — the outer `@Transactional` in write services naturally reads from master. Document this behavior for API consumers. |
+| **Replica goes down** | Medium | If the replica is unreachable, read operations will fail with a connection timeout (default: 30s). | Future enhancement: add a health check filter that falls back to primary if replica is unreachable. For now, restart the replica: `docker compose up -d postgres-replica` |
+| **PgBouncer transaction mode** | Low | PgBouncer runs in transaction pooling mode (default). Prepared statements and `SET` commands may not persist across transactions. | Spring Boot's HikariCP and JPA handle this correctly. `SET default_transaction_read_only = on` is sent within each read-only transaction. |
+| **Flyway on primary only** | Low | Migrations only run against the primary datasource. The replica gets schema changes via streaming replication. | By design — Flyway runs at startup on the `@Primary` (primary) datasource. The replica receives WAL changes automatically. |
+| **Nested transaction routing** | Low | If a write service calls a read service, the read goes to master (not replica). This is correct but may confuse developers expecting all `readOnly` services to hit the replica. | Documented above — outer transaction flag takes precedence. This is by design to ensure consistency within write transactions. |
+
+### Scaling to more replicas
+
+To add additional read replicas:
+
+1. **Docker Compose:** Duplicate `postgres-replica` + `pgbouncer-replica` blocks with unique names/ports:
+   ```yaml
+   postgres-replica-2:
+     image: postgres:16-alpine
+     ports:
+       - "5434:5432"
+     # ... same replica setup ...
+
+   pgbouncer-replica-2:
+     ports:
+       - "6434:6432"
+     depends_on:
+       postgres-replica-2:
+         condition: service_healthy
+   ```
+
+2. **DataSourceConfig:** Add a new `@Bean` for the additional replica and add it to the routing map.
+
+3. **application.yml:** Add the new datasource entry:
+   ```yaml
+   app:
+     datasource:
+       replica2:
+         hikari:
+           jdbc-url: jdbc:postgresql://localhost:6434/poc
+   ```
+
+### Cloud migration (AWS RDS / GCP Cloud SQL)
+
+| What stays the same | What changes |
+|---------------------|-------------|
+| `@Transactional(readOnly = true)` annotations | Replace Docker replica → RDS Read Replica / Cloud SQL replica |
+| `RoutingDataSource` pattern | Update `app.datasource.replica.hikari.jdbc-url` → cloud reader endpoint |
+| `@Primary` routing logic | Optionally remove PgBouncer (managed services handle pooling) |
+
+**AWS RDS:** Use the reader endpoint (`instance-name.cluster-xxxx.region.rds.amazonaws.com`) as the replica JDBC URL.
+
+**GCP Cloud SQL:** Use the read replica IP address as the replica JDBC URL.
+
 ## How to Add a New Module
 
 ### Step-by-step
@@ -381,7 +502,7 @@ spring:
 | Command | Description |
 |---------|-------------|
 | `make help` | Show all available commands |
-| `make infra-up` | Start all infrastructure (auto-initializes Keycloak + Kong + Vault) |
+| `make infra-up` | Start all infrastructure (master + replica, auto-initializes Keycloak + Kong + Vault) |
 | `make infra-down` | Stop infrastructure |
 | `make infra-reset` | Stop + delete volumes (reset DB) |
 | `make build` | Build all modules |
@@ -393,11 +514,15 @@ spring:
 | `make status` | Show Docker Compose status |
 | `make logs` | Tail infrastructure logs |
 | `make logs-kong` | Tail Kong logs |
+| `make logs-replica` | Tail PostgreSQL replica logs |
 | `make keycloak-setup` | Re-run Keycloak init script |
 | `make kong-reload` | Regenerate Kong config from Keycloak JWKS |
 | `make token` | Get an access token from Keycloak |
 | `make test-api` | Test API via Kong gateway (port 8000) |
 | `make test-api-direct` | Test API directly (port 8080, no auth) |
+| `make verify-replication` | Verify PostgreSQL streaming replication is working |
+| `make psql-master` | Connect to PostgreSQL master via psql |
+| `make psql-replica` | Connect to PostgreSQL replica via psql |
 
 ## Infrastructure Ports
 
@@ -406,8 +531,10 @@ spring:
 | Kong proxy | 8000 | API entry point (JWT validation) |
 | Kong admin | 8001 | Admin API (internal) |
 | App | 8080 | Spring Boot (direct, no auth) |
-| PostgreSQL | 5432 | Direct access |
-| PgBouncer | 6432 | Pooled access |
+| PostgreSQL (master) | 5432 | Direct access |
+| PostgreSQL (replica) | 5433 | Direct access (debug) |
+| PgBouncer (master) | 6432 | Pooled write access |
+| PgBouncer (replica) | 6433 | Pooled read access |
 | Keycloak | 8081 | Admin console (admin/admin) |
 | Vault | 8200 | Secrets API/UI (root-token) |
 | Jaeger | 16686 | Tracing UI |

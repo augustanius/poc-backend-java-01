@@ -5,10 +5,12 @@ import com.poc.notification.application.api.GetNotificationTemplateUseCase;
 import com.poc.notification.domain.model.NotificationTemplate;
 import com.poc.notification.domain.spi.NotificationTemplateRepository;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 
 @Service
+@Transactional(readOnly = true)
 public class GetNotificationTemplateService implements GetNotificationTemplateUseCase {
 
     private final NotificationTemplateRepository templateRepository;
