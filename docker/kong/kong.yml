@@ -8,38 +8,51 @@ consumers:
         algorithm: RS256
         rsa_public_key: |
           -----BEGIN PUBLIC KEY-----
-          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu1L3qP2qO43xkT3PEoie
-          RwsKgQLWOMjqyRWZR+NLQ6y0RputJsKUycKu7jRo/sF3Zil65R+RE6mbaL2EVe7u
-          QJhsj4vtQmPsJTxpTqA13lhtAeNwT6HerVQugr90OXmTpKpToTHIwPBQ9ATOsGBk
-          MtBJKlqwTxm/2Br3bHTsyNrM/N+wZjmindwaNzfnaQQElgZXaA91XLiHK44ARD1J
-          chibnzDiEKPKnhjHTRac2Nyf89IXHXWQpe2rlyNwtWwDN2XCwAkArh/pcxyV5bLp
-          eFcXgltVnY4ZMGVqw9+h1VlICcYeZYZVV87B2NHypoZDUXt074BIiH+WSFd37JWh
-          LQIDAQAB
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAkjc6yxtdO0Z9QTPyfXWt
+          10IDI7Rzq6hMUoffsr7PwR5idnLcAui5UEnXaMrHSTVFOfEMIp2+I7vTmCIkAvxm
+          ccXyTQOGMMN/9UaJlCTEB4DTYXmG9Qincx86noSHrdY6cMteWL/JS9NvMZXjH2Nq
+          Erq09FxOTSA1KJdLKfymIgVPVdJOFH8slwU8SqVIJp7J9meg/N4pvm8Ga5gwDUe+
+          aTxlkErmFBZolR8eDd4Ic+5fQPfyu0Rq43nnBQpVVOo1catsVYx0Hd2f0Th8TivK
+          0jLof3RNF/fhaW3e4eDQYFE9UqsG9fhwdzSA9QFoRaNvdR5DHTog7gufUolMAXqx
+          /QIDAQAB
           -----END PUBLIC KEY-----
       - key: "http://poc-keycloak:8080/realms/poc"
         algorithm: RS256
         rsa_public_key: |
           -----BEGIN PUBLIC KEY-----
-          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAu1L3qP2qO43xkT3PEoie
-          RwsKgQLWOMjqyRWZR+NLQ6y0RputJsKUycKu7jRo/sF3Zil65R+RE6mbaL2EVe7u
-          QJhsj4vtQmPsJTxpTqA13lhtAeNwT6HerVQugr90OXmTpKpToTHIwPBQ9ATOsGBk
-          MtBJKlqwTxm/2Br3bHTsyNrM/N+wZjmindwaNzfnaQQElgZXaA91XLiHK44ARD1J
-          chibnzDiEKPKnhjHTRac2Nyf89IXHXWQpe2rlyNwtWwDN2XCwAkArh/pcxyV5bLp
-          eFcXgltVnY4ZMGVqw9+h1VlICcYeZYZVV87B2NHypoZDUXt074BIiH+WSFd37JWh
-          LQIDAQAB
+          MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAkjc6yxtdO0Z9QTPyfXWt
+          10IDI7Rzq6hMUoffsr7PwR5idnLcAui5UEnXaMrHSTVFOfEMIp2+I7vTmCIkAvxm
+          ccXyTQOGMMN/9UaJlCTEB4DTYXmG9Qincx86noSHrdY6cMteWL/JS9NvMZXjH2Nq
+          Erq09FxOTSA1KJdLKfymIgVPVdJOFH8slwU8SqVIJp7J9meg/N4pvm8Ga5gwDUe+
+          aTxlkErmFBZolR8eDd4Ic+5fQPfyu0Rq43nnBQpVVOo1catsVYx0Hd2f0Th8TivK
+          0jLof3RNF/fhaW3e4eDQYFE9UqsG9fhwdzSA9QFoRaNvdR5DHTog7gufUolMAXqx
+          /QIDAQAB
           -----END PUBLIC KEY-----
 
 services:
   - name: poc-api
     url: http://host.docker.internal:8080
     routes:
+      - name: auth-register
+        paths: ["/api/auth/register"]
+        strip_path: false
+        plugins:
+          - name: cors
+            config:
+              origins: ["http://localhost:3000", "http://localhost:5173", "http://localhost:3001"]
+              methods: [POST, OPTIONS]
+              headers: [Content-Type]
+              exposed_headers: []
+              credentials: true
+              preflight_continue: false
+              max_age: 3600
       - name: users
         paths: ["/api/users"]
         strip_path: false
         plugins:
           - name: cors
             config:
-              origins: ["http://localhost:3000", "http://localhost:5173"]
+              origins: ["http://localhost:3000", "http://localhost:5173", "http://localhost:3001"]
               methods: [GET, HEAD, PUT, PATCH, POST, DELETE, OPTIONS]
               headers: [Authorization, Content-Type]
               exposed_headers: []
@@ -114,7 +127,7 @@ services:
         plugins:
           - name: cors
             config:
-              origins: ["http://localhost:3000", "http://localhost:5173"]
+              origins: ["http://localhost:3000", "http://localhost:5173", "http://localhost:3001"]
               methods: [GET, HEAD, PUT, PATCH, POST, DELETE, OPTIONS]
               headers: [Authorization, Content-Type]
               exposed_headers: []
@@ -189,7 +202,7 @@ services:
         plugins:
           - name: cors
             config:
-              origins: ["http://localhost:3000", "http://localhost:5173"]
+              origins: ["http://localhost:3000", "http://localhost:5173", "http://localhost:3001"]
               methods: [GET, HEAD, PUT, PATCH, POST, DELETE, OPTIONS]
               headers: [Authorization, Content-Type]
               exposed_headers: []

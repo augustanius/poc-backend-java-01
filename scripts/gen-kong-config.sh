@@ -6,7 +6,7 @@ KEYCLOAK_HOST="${KEYCLOAK_HOST:-localhost:8081}"
 KEYCLOAK_INTERNAL_HOST="${KEYCLOAK_INTERNAL_HOST:-poc-keycloak:8080}"
 REALM="${KEYCLOAK_REALM:-poc}"
 BACKEND_URL="${BACKEND_URL:-http://host.docker.internal:8080}"
-FRONTEND_ORIGINS="${FRONTEND_ORIGINS:-http://localhost:3000,http://localhost:5173}"
+FRONTEND_ORIGINS="${FRONTEND_ORIGINS:-http://localhost:3000,http://localhost:5173,http://localhost:3001}"
 FRONTEND_ORIGINS_YAML=$(echo "$FRONTEND_ORIGINS" | sed 's/,/", "/g; s/^/"/; s/$/"/')
 
 # Wait for Keycloak
