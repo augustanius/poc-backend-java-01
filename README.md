@@ -1,6 +1,6 @@
 # PoC Modular Monolith
 
-A Spring Boot 4 modular monolith boilerplate demonstrating hexagonal (ports & adapters) architecture with Kong API Gateway, Keycloak, Vault, and multi-schema Flyway.
+A Spring Boot 4 modular monolith boilerplate demonstrating Clean Architecture with Kong API Gateway, Keycloak, Vault, and multi-schema Flyway.
 
 ## Tech Stack
 
@@ -50,6 +50,55 @@ make token
 make test-api
 ```
 
+## IntelliJ IDEA Setup
+
+### Import Project
+
+1. **File → Open** → Select the root `pom.xml`
+2. Choose **"Open as Project"**
+3. Wait for Maven to index all modules
+
+### Start Infrastructure
+
+```bash
+make infra-up      # PostgreSQL, Keycloak, Vault, etc.
+make kafka-up      # Kafka, MailHog
+```
+
+### Run Configurations
+
+Create these in **Run → Edit Configurations**:
+
+| Name | Main Class | Module | Profile | VM Options |
+|------|-----------|--------|---------|------------|
+| API Server | `com.poc.app.PocApplication` | poc-app | dev | — |
+| Email Worker | `com.poc.worker.WorkerApplication` | poc-worker | dev | `--worker.handlers=email` |
+
+### Alternative: Quick Run
+
+1. Open `poc-app/src/main/java/com/poc/app/PocApplication.java`
+2. Click the **green play button** → `Run 'PocApplication'`
+3. Set **Active profiles**: `dev`
+
+### Dev Profile Features
+
+- **Swagger UI**: http://localhost:8080/swagger-ui/index.html
+- **Local Vault token**: Auto-loaded from `.vault-token`
+- **No auth required**: Test directly on port 8080
+
+### Quick Test
+
+```bash
+make test-api-direct   # Test without auth (port 8080)
+```
+
+### Key Points
+
+- **API Server** runs on port `8080`
+- **Worker** has no web server (background process)
+- **All modules** compile together — no need to run `mvn install` first
+- **Database routing** is automatic: writes → master, reads → replica
+
 ## Architecture
 
 ### Request Flow
@@ -85,32 +134,43 @@ poc-common          (shared kernel — base classes, context, events)
            poc-app      (assembles everything — filters, interceptors, config, migrations)
 ```
 
-### Hexagonal Layers
+### Clean Architecture Layers
 
 Each module follows this structure:
 
 ```
 poc-{module}/src/main/java/com/poc/{module}/
-├── domain/
-│   ├── model/          # Aggregate root (extends AggregateRoot<String>)
-│   └── spi/            # Outbound ports (repository interfaces)
-├── application/
-│   ├── api/            # Inbound ports (use case interfaces)
-│   └── service/        # Use case implementations (@Service)
-├── infrastructure/
-│   ├── inbound/web/    # REST controllers + DTOs
-│   ├── outbound/       # JPA entities, repositories, adapters
-│   └── config/         # @Configuration + @ComponentScan
-└── publicapi/          # Public API for other modules
+├── domain/                    # Entities (innermost layer)
+│   └── model/                 # Aggregate root (extends AggregateRoot<String>)
+├── contracts/                 # Interfaces (what the app needs)
+│   ├── usecases/              # Use case interfaces
+│   ├── repositories/          # Repository interfaces
+│   └── gateways/              # External system interfaces
+├── usecases/                  # Application business rules
+│   └── impl/                  # Use case implementations (@Service)
+├── interfaceadapters/         # Translates between layers
+│   ├── inbound/
+│   │   ├── rest/              # REST controllers + DTOs
+│   │   └── messaging/         # Kafka consumers
+│   ├── outbound/
+│   │   ├── persistence/       # Repository adapters
+│   │   └── keycloak/          # Keycloak adapter
+│   └── presenters/            # Domain → DTO mapping
+├── frameworks/                # External integrations (outermost layer)
+│   ├── persistence/           # JPA entities + repositories
+│   ├── config/                # @Configuration + @ComponentScan
+│   └── messaging/             # Kafka configuration
+└── publicapi/                 # Public API for other modules
 ```
 
 ### Key Rules
 - **Domain objects** have NO JPA annotations
-- **SPIs** return domain objects, not JPA entities
+- **Repositories** return domain objects, not JPA entities
 - **Only `publicapi/`** is visible to other modules
 - **Each module** has its own Postgres schema
 - **Events** in `poc-common` enable cross-module communication without compile dependencies
 - **Every endpoint** must have `@RequirePermission` or `@RequireRole`
+- **Dependencies** point inward: `frameworks/` → `interfaceadapters/` → `usecases/` → `domain/`
 
 ## Kong API Gateway
 
@@ -174,8 +234,8 @@ The `docker/keycloak/init.sh` script runs automatically on `make infra-up` and c
 
 ### In the user module
 
-- `IdentityProviderPort` — domain SPI for identity operations
-- `KeycloakUserAdapter` — infrastructure adapter calling Keycloak REST API
+- `IdentityProvider` — gateway interface for identity operations
+- `KeycloakUserAdapter` — outbound adapter calling Keycloak REST API
 - `RegisterUserService` — orchestrates: create Keycloak user → save to DB → publish event
 - If DB save fails, rolls back by deleting the Keycloak user
 
@@ -453,7 +513,7 @@ To add additional read replicas:
 
 1. **Create directory:**
    ```bash
-   mkdir -p poc-{name}/src/main/java/com/poc/{name}/{domain/{model,spi},application/{api,service},infrastructure/{inbound/web,outbound/persistence,config},publicapi}
+   mkdir -p poc-{name}/src/main/java/com/poc/{name}/{domain/model,contracts/{usecases,repositories,gateways},usecases,interfaceadapters/{inbound/{rest,messaging},outbound/{persistence,keycloak},presenters},frameworks/{persistence,config,messaging},publicapi}
    ```
 
 2. **Create `poc-{name}/pom.xml`** — parent is `poc-parent`, depends on `poc-common`
@@ -464,34 +524,43 @@ To add additional read replicas:
 
 5. **Create domain model** — extends `AggregateRoot<String>`, has `getId()`, `equals()`, `hashCode()`
 
-6. **Create SPI** — interface in `domain/spi/`, returns domain objects
+6. **Create repository interface** — in `contracts/repositories/`, returns domain objects
 
-7. **Create use cases** — interfaces in `application/api/`
+7. **Create use case interfaces** — in `contracts/usecases/`
 
-8. **Create services** — `@Service` with constructor-injected SPIs
+8. **Create use case implementations** — `@Service` in `usecases/`, injects repository interfaces
 
-9. **Create JPA entity** — `@Entity` + `@Table(schema = "poc_{name}")`
+9. **Create JPA entity** — `@Entity` + `@Table(schema = "poc_{name}")` in `frameworks/persistence/`
 
-10. **Create adapter** — `@Component`, implements SPI, maps domain ↔ JPA
+10. **Create JPA repository** — extends `JpaRepository` in `frameworks/persistence/`
 
-11. **Create controller** — `@RestController`, `@RequirePermission` on endpoints
+11. **Create adapter** — `@Component` in `interfaceadapters/outbound/persistence/`, implements repository interface, maps domain ↔ JPA
 
-12. **Create module config** — `@Configuration` + `@ComponentScan(basePackages = "com.poc.{name}")`
+12. **Create controller** — `@RestController` in `interfaceadapters/inbound/rest/`, `@RequirePermission` on endpoints
 
-13. **Create Flyway migration** — `V{N}__create_{name}_tables.sql` in `poc-app/`
+13. **Create DTOs** — records in `interfaceadapters/inbound/rest/dto/`
 
-14. **Add schema to `application.yml`** — add `poc_{name}` to `spring.flyway.schemas`
+14. **Create presenter** — static mapping methods in `interfaceadapters/presenters/`
 
-15. **Add Kong route** — update `scripts/gen-kong-config.sh` and run `make kong-reload`
+15. **Create module config** — `@Configuration` + `@ComponentScan(basePackages = "com.poc.{name}")` in `frameworks/config/`
+
+16. **Create Flyway migration** — `V{N}__create_{name}_tables.sql` in `poc-app/`
+
+17. **Add schema to `application.yml`** — add `poc_{name}` to `spring.flyway.schemas`
+
+18. **Add Kong route** — update `scripts/gen-kong-config.sh` and run `make kong-reload`
 
 ### Checklist
 
 - [ ] Domain model extends `AggregateRoot<String>`
-- [ ] SPI returns domain objects, not JPA entities
-- [ ] Service is `@Service` with constructor injection
-- [ ] JPA entity has `@Table(schema = "poc_{name}")`
-- [ ] Controller has `@RequirePermission` on every endpoint
-- [ ] Module config has `@ComponentScan`
+- [ ] Repository interface in `contracts/repositories/`
+- [ ] Use case interfaces in `contracts/usecases/`
+- [ ] Use case implementations in `usecases/`
+- [ ] JPA entity in `frameworks/persistence/` with `@Table(schema = "poc_{name}")`
+- [ ] Repository adapter in `interfaceadapters/outbound/persistence/`
+- [ ] Controller in `interfaceadapters/inbound/rest/` with `@RequirePermission`
+- [ ] DTOs in `interfaceadapters/inbound/rest/dto/`
+- [ ] Module config in `frameworks/config/` with `@ComponentScan`
 - [ ] Flyway migration creates schema + tables
 - [ ] Schema in `spring.flyway.schemas`
 - [ ] Kong route added in `gen-kong-config.sh`

@@ -1,6 +1,6 @@
 package com.poc.app;
 
-import com.poc.app.config.AppProperties;
+import com.poc.app.frameworks.config.AppProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
