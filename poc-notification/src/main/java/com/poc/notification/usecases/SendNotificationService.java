@@ -6,6 +6,7 @@ import com.poc.notification.contracts.usecases.SendNotificationUseCase;
 import com.poc.notification.domain.model.Notification;
 import com.poc.notification.contracts.repositories.NotificationRepository;
 import com.poc.notification.contracts.gateways.UserGateway;
+import com.poc.user.exception.UserNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -34,7 +35,7 @@ public class SendNotificationService implements SendNotificationUseCase {
     @Transactional
     public Notification send(String userId, String templateId, String subject, String body, String channel) {
         var userInfo = userGateway.findUserById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("User not found: " + userId));
+                .orElseThrow(() -> new UserNotFoundException(userId));
 
         log.info("Queuing notification for user {} ({}) via {}", userInfo.username(), userInfo.email(), channel);
 

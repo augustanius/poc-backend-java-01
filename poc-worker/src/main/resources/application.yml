@@ -51,6 +51,8 @@ worker:
   handlers: "*"
 
 logging:
+  pattern:
+    level: "%X{correlationId:-} %5p"
   level:
     com.poc: DEBUG
     org.springframework.kafka: INFO

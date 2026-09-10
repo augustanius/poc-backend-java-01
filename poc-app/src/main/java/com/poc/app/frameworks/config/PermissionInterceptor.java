@@ -3,12 +3,15 @@ package com.poc.app.frameworks.config;
 import com.poc.common.context.RequirePermission;
 import com.poc.common.context.RequireRole;
 import com.poc.common.context.UserContext;
+import com.poc.common.exception.ForbiddenException;
+import com.poc.common.exception.UnauthorizedException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
+
+import java.util.Arrays;
 
 public class PermissionInterceptor implements HandlerInterceptor {
 
@@ -26,14 +29,17 @@ public class PermissionInterceptor implements HandlerInterceptor {
 
         if (annotation != null) {
             if (!UserContext.isAuthenticated()) {
-                response.setStatus(HttpStatus.UNAUTHORIZED.value());
-                return false;
+                throw new UnauthorizedException("Authentication required",
+                        java.util.Map.of("requiredPermission", Arrays.toString(annotation.value())));
             }
             if (UserContext.hasAnyPermission(annotation.value())) {
                 return true;
             }
-            response.setStatus(HttpStatus.FORBIDDEN.value());
-            return false;
+            throw new ForbiddenException("Insufficient permissions: " + Arrays.toString(annotation.value()),
+                    java.util.Map.of(
+                            "requiredPermissions", Arrays.toString(annotation.value()),
+                            "userPermissions", UserContext.getUserPermissions()
+                    ));
         }
 
         // Then check @RequireRole
@@ -44,14 +50,17 @@ public class PermissionInterceptor implements HandlerInterceptor {
 
         if (roleAnnotation != null) {
             if (!UserContext.isAuthenticated()) {
-                response.setStatus(HttpStatus.UNAUTHORIZED.value());
-                return false;
+                throw new UnauthorizedException("Authentication required",
+                        java.util.Map.of("requiredRole", Arrays.toString(roleAnnotation.value())));
             }
             if (UserContext.hasAnyRole(roleAnnotation.value())) {
                 return true;
             }
-            response.setStatus(HttpStatus.FORBIDDEN.value());
-            return false;
+            throw new ForbiddenException("Insufficient roles: " + Arrays.toString(roleAnnotation.value()),
+                    java.util.Map.of(
+                            "requiredRoles", Arrays.toString(roleAnnotation.value()),
+                            "userRoles", UserContext.getUserRoles()
+                    ));
         }
 
         // No annotation = public endpoint

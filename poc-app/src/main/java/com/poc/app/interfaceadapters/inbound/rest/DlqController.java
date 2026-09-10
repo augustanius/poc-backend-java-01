@@ -1,6 +1,7 @@
 package com.poc.app.interfaceadapters.inbound.rest;
 
 import com.poc.app.contracts.usecases.ManageDlqUseCase;
+import com.poc.app.exception.DlqMessageNotFoundException;
 import com.poc.common.context.RequirePermission;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,7 +41,7 @@ public class DlqController {
     public ResponseEntity<ManageDlqUseCase.DlqMessage> getById(@PathVariable String id) {
         ManageDlqUseCase.DlqMessage message = manageDlqUseCase.getById(id);
         if (message == null) {
-            return ResponseEntity.notFound().build();
+            throw new DlqMessageNotFoundException(id);
         }
         return ResponseEntity.ok(message);
     }
@@ -54,6 +55,10 @@ public class DlqController {
                     "message", "Message retried successfully",
                     "id", id
             ));
+        }
+        ManageDlqUseCase.DlqMessage message = manageDlqUseCase.getById(id);
+        if (message == null) {
+            throw new DlqMessageNotFoundException(id);
         }
         return ResponseEntity.badRequest().body(Map.of(
                 "success", false,
@@ -95,7 +100,7 @@ public class DlqController {
                     "id", id
             ));
         }
-        return ResponseEntity.notFound().build();
+        throw new DlqMessageNotFoundException(id);
     }
 
     @GetMapping("/stats")

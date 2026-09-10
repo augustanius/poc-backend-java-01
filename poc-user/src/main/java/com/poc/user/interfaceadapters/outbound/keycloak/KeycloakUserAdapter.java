@@ -2,6 +2,7 @@ package com.poc.user.interfaceadapters.outbound.keycloak;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.poc.user.contracts.gateways.IdentityProvider;
+import com.poc.user.exception.KeycloakUnavailableException;
 import com.poc.user.frameworks.config.KeycloakProperties;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -73,7 +74,7 @@ public class KeycloakUserAdapter implements IdentityProvider {
                 .body(List.class);
 
         if (results == null || results.isEmpty()) {
-            throw new RuntimeException("Failed to find Keycloak user: " + username);
+            throw new KeycloakUnavailableException("Failed to find user: " + username);
         }
         return (String) results.getFirst().get("id");
     }
@@ -103,7 +104,7 @@ public class KeycloakUserAdapter implements IdentityProvider {
                 .body(Map.class);
 
         if (role == null || role.get("id") == null) {
-            throw new RuntimeException("Failed to find Keycloak role: " + roleName);
+            throw new KeycloakUnavailableException("Failed to find role: " + roleName);
         }
 
         String mappingsUrl = properties.authServerUrl() + "/admin/realms/" + properties.realm()
@@ -137,7 +138,7 @@ public class KeycloakUserAdapter implements IdentityProvider {
                 .body(TokenResponse.class);
 
         if (response == null || response.accessToken() == null) {
-            throw new RuntimeException("Failed to obtain Keycloak admin token");
+            throw new KeycloakUnavailableException("Failed to obtain admin token");
         }
         return response.accessToken();
     }

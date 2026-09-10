@@ -8,6 +8,7 @@ import com.poc.notification.contracts.usecases.GetNotificationUseCase;
 import com.poc.notification.contracts.usecases.SendNotificationUseCase;
 import com.poc.notification.domain.model.Notification;
 import com.poc.notification.interfaceadapters.inbound.rest.dto.NotificationDto;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -28,7 +29,7 @@ public class NotificationController {
     @PostMapping
     @RequirePermission("notification:write")
     public ResponseEntity<NotificationDto.NotificationResponse> send(
-            @RequestBody NotificationDto.SendNotificationRequest request,
+            @Valid @RequestBody NotificationDto.SendNotificationRequest request,
             @AuthenticatedUserId String userId) {
 
         var notification = sendNotificationUseCase.send(

@@ -6,6 +6,7 @@ import com.poc.notification.contracts.usecases.CreateNotificationTemplateUseCase
 import com.poc.notification.contracts.usecases.GetNotificationTemplateUseCase;
 import com.poc.notification.domain.model.NotificationTemplate;
 import com.poc.notification.interfaceadapters.inbound.rest.dto.NotificationTemplateDto;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -28,7 +29,7 @@ public class NotificationTemplateController {
     @PostMapping
     @RequirePermission("notification:write")
     public ResponseEntity<NotificationTemplateDto.TemplateResponse> create(
-            @RequestBody NotificationTemplateDto.CreateTemplateRequest request) {
+            @Valid @RequestBody NotificationTemplateDto.CreateTemplateRequest request) {
 
         NotificationTemplate template = new NotificationTemplate(
                 UUID.randomUUID().toString(), request.name(),

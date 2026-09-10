@@ -1,5 +1,6 @@
 package com.poc.app.frameworks.config;
 
+import com.poc.app.frameworks.filter.CorrelationFilter;
 import com.poc.app.frameworks.filter.UserContextFilter;
 import org.springframework.boot.web.servlet.FilterRegistrationBean;
 import org.springframework.context.annotation.Bean;
@@ -12,6 +13,15 @@ import java.util.List;
 
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
+
+    @Bean
+    public FilterRegistrationBean<CorrelationFilter> correlationFilter() {
+        FilterRegistrationBean<CorrelationFilter> registration = new FilterRegistrationBean<>();
+        registration.setFilter(new CorrelationFilter());
+        registration.addUrlPatterns("/*");
+        registration.setOrder(0);
+        return registration;
+    }
 
     @Bean
     public FilterRegistrationBean<UserContextFilter> userContextFilter() {

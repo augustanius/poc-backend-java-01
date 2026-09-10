@@ -28,6 +28,10 @@ spring:
 
 server:
   port: 8080
+  error:
+    include-stacktrace: never
+    include-message: never
+    include-binding-errors: never
 
 app:
   datasource:
@@ -62,6 +66,8 @@ outbox:
   max-retries: 5
 
 logging:
+  pattern:
+    level: "%X{correlationId:-} %5p"
   level:
     com.poc: DEBUG
     org.springframework.boot: INFO

@@ -29,7 +29,9 @@ public class KafkaConfig {
         return new DefaultKafkaProducerFactory<>(Map.of(
                 ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers,
                 ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
-                ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class
+                ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class,
+                ProducerConfig.INTERCEPTOR_CLASSES_CONFIG,
+                        "com.poc.worker.frameworks.messaging.KafkaCorrelationInterceptor"
         ));
     }
 
@@ -54,7 +56,9 @@ public class KafkaConfig {
                 ConsumerConfig.GROUP_ID_CONFIG, "poc-worker",
                 ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class,
                 ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class,
-                ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest"
+                ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest",
+                ConsumerConfig.INTERCEPTOR_CLASSES_CONFIG,
+                        "com.poc.worker.frameworks.messaging.KafkaCorrelationInterceptor"
         ));
     }
 }
